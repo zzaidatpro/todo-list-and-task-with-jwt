@@ -1,0 +1,45 @@
+version: 2.1
+
+executors:
+  playwright-executor:
+    docker:
+      - image: mcr.microsoft.com/playwright:v1.50.0-noble
+    working_directory: ~/repo
+
+jobs:
+  test-e2e:
+    executor: playwright-executor
+    steps:
+      - checkout
+
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "package-lock.json" }}
+            - v1-dependencies-
+
+      - run:
+          name: Installation des dépendances npm
+          command: npm ci
+
+      - run:
+          name: Installation des navigateurs Playwright
+          command: npx playwright install chromium --with-deps
+
+      - save_cache:
+          paths:
+            - ~/.npm
+            - ~/.cache/ms-playwright
+          key: v1-dependencies-{{ checksum "package-lock.json" }}
+
+      - run:
+          name: Exécution des tests E2E Playwright
+          command: npx playwright test
+
+      - store_artifacts:
+          path: playwright-report
+          destination: playwright-report
+
+workflows:
+  build-and-test:
+    jobs:
+      - test-e2e

@@ -1,0 +1,45 @@
+# --- Dépendances ---
+node_modules/
+jspm_packages/
+
+# --- Environnement et Secrets ---
+.env
+.env.local
+.env.*.local
+server/
+
+# --- Builds et Bundles (React / Vite) ---
+dist/
+build/
+.vite/
+
+# --- Tests (Playwright et Couverture) ---
+test-results/
+playwright-report/
+playwright/.cache/
+coverage/
+
+# --- Logs et fichiers de débogage ---
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Système d'exploitation ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# --- Éditeurs de code (IDE) ---
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
