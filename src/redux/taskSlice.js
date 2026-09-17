@@ -2,32 +2,39 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 
 const API_URL = 'http://localhost:5000/api/todos';
 
-export const fetchTasks = createAsyncThunk('tasks/fetchTasks', async () => {
-  const response = await fetch(API_URL);
+const getAuthHeaders = (getState) => {
+  const token = localStorage.getItem('token') || getState()?.auth?.token || getState()?.auth?.user?.token;
+  
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+  };
+};
+
+export const fetchTasks = createAsyncThunk('task/fetchTasks', async (_, thunkAPI) => {
+  const response = await fetch(API_URL, { headers: getAuthHeaders(thunkAPI.getState()) });
   if (!response.ok) throw new Error('Erreur lors du chargement des tâches');
   return await response.json();
 });
 
-export const addTask = createAsyncThunk('tasks/addTask', async (taskData) => {
-  // Si taskData est juste une chaîne de caractères ou un objet partiel, on complète proprement
+export const addTask = createAsyncThunk('task/addTask', async (taskData, thunkAPI) => {
   const basePayload = typeof taskData === 'string' ? { title: taskData } : taskData;
-  console.log("DONNÉES REÇUES DANS LE THUNK :", basePayload);
   const payload = {
     title: basePayload.title,
     status: basePayload.status || 'en cours',
     category: basePayload.category || 'Perso',
     responsible: basePayload.responsible || '',
     duration: {
-      value: basePayload.duration?.value || 1,
-      unit: basePayload.duration?.unit || 'jours'
-    },
+           value: basePayload.duration?.value || 1,
+          unit: basePayload.duration?.unit || 'jours'
+             },
     dueDate: basePayload.dueDate || new Date(),
-    
+    subTasks: basePayload.subTasks || []
   };
 
   const response = await fetch(API_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(thunkAPI.getState()),
     body: JSON.stringify(payload),
   });
 
@@ -41,12 +48,12 @@ export const addTask = createAsyncThunk('tasks/addTask', async (taskData) => {
 });
 
 export const toggleTaskStatus = createAsyncThunk(
-  'tasks/toggleTaskStatus',
-  async ({ id, currentStatus }) => {
+  'task/toggleTaskStatus',
+  async ({ id, currentStatus }, thunkAPI) => {
     const newStatus = currentStatus === 'terminée' ? 'en cours' : 'terminée';
     const response = await fetch(`${API_URL}/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(thunkAPI.getState()), // <--- Ajouté ici
       body: JSON.stringify({ status: newStatus }),
     });
     if (!response.ok) throw new Error('Erreur lors de la mise à jour du statut');
@@ -54,29 +61,27 @@ export const toggleTaskStatus = createAsyncThunk(
   }
 );
 
-export const deleteTask = createAsyncThunk('tasks/deleteTask', async (id) => {
+export const deleteTask = createAsyncThunk('task/deleteTask', async (id, thunkAPI) => {
   const response = await fetch(`${API_URL}/${id}`, {
     method: 'DELETE',
+    headers: getAuthHeaders(thunkAPI.getState()),
   });
   if (!response.ok) throw new Error('Erreur lors de la suppression');
   return id;
 });
 
-export const updateTask = createAsyncThunk(
-  'tasks/updateTask',
-  async ({ id, title }) => {
-    const response = await fetch(`${API_URL}/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title }),
-    });
-    if (!response.ok) throw new Error('Erreur lors de la modification');
-    return await response.json();
-  }
-);
+export const updateTask = createAsyncThunk('task/updateTask', async ({ id, title }, thunkAPI) => {
+  const response = await fetch(`${API_URL}/${id}`, {
+    method: 'PUT',
+    headers: getAuthHeaders(thunkAPI.getState()),
+    body: JSON.stringify({ title }),
+  });
+  if (!response.ok) throw new Error('Erreur lors de la modification');
+  return await response.json();
+});
 
-const tasksSlice = createSlice({
-  name: 'tasks',
+const taskSlice = createSlice({
+  name: 'task',
   initialState: {
     items: [],
     filter: 'ALL',
@@ -87,10 +92,10 @@ const tasksSlice = createSlice({
     setFilter: (state, action) => {
       state.filter = action.payload;
     },
-    deleteAllTasks: (state) => {
+    deleteTask: (state) => {
       state.items = [];
     },
-    deleteAllDoneTasks: (state) => {
+    deleteAllDoneTask: (state) => {
       state.items = state.items.filter((t) => t.status !== 'terminée');
     },
   },
@@ -128,6 +133,6 @@ const tasksSlice = createSlice({
   },
 });
 
-export const { setFilter, deleteAllTasks, deleteAllDoneTasks } = tasksSlice.actions;
+export const { setFilter, deleteAllTask, deleteAllDoneTask } = taskSlice.actions;
 
-export default tasksSlice.reducer;
+export default taskSlice.reducer;

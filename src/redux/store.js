@@ -1,10 +1,22 @@
-import { configureStore } from "@reduxjs/toolkit";
-import tasksReducer from "./taskSlice";
+import { configureStore, combineReducers } from "@reduxjs/toolkit";
+import taskReducer from "./taskSlice";
+import personReducer from "./personSlice";
+import authReducer, {logout} from "./authSlice"
 
-export const store = configureStore({
-  reducer: {
-    tasks: tasksReducer,
-  },
+const appReducer = combineReducers({
+  auth : authReducer,
+  tasks : taskReducer,
+  persons : personReducer
 });
 
-export default store;
+const rootReducer = (state, action) => {
+  if (action.type == logout.type) {
+    state ={auth : state?.auth};
+  } 
+  return  appReducer(state,action);
+}
+
+export const store = configureStore({
+  reducer: rootReducer,
+  },
+ );

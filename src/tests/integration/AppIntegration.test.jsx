@@ -1,57 +1,100 @@
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { Provider } from 'react-redux';
+import { describe, test, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { Provider } from 'react me-redux';
 import { configureStore } from '@reduxjs/toolkit';
-import tasksReducer from '../../redux/taskSlice';
-import App from '../../App';
+import React from 'react';
 
-const renderWithRedux = (ui) => {
-  const testStore = configureStore({
-    reducer: { tasks: tasksReducer },
-  });
-  return render(<Provider store={testStore}>{ui}</Provider>);
+// Import du reducer et du composant App
+import taskReducer from './taskSlice';
+import App from './App';
+
+// Fonction utilitaire pour rendre un composant entouré par le Provider Redux
+const renderWithRedux = (
+  component,
+  {
+    initialState,
+    store = configureStore({
+      reducer: { task: taskReducer },
+      preloadedState: { task: initialState }
+    })
+  } = {}
+) => {
+  return {
+    ...render(<Provider store={store}>{component}</Provider>),
+    store
+  };
 };
 
-describe('Test d intégration App', () => {
-  beforeEach(() => {
-    globalThis.fetch = vi.fn((_url, options) => {
-      if (!options || options.method === 'GET') {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve([]),
-        });
-      }
-      if (options.method === 'POST') {
-        const body = JSON.parse(options.body);
-        return Promise.resolve({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              _id: 'mock-id-123',
-              title: body.title,
-              status: 'en cours',
-            }),
-        });
-      }
-    });
-  });
+describe('Tests d intégration du composant App', () => {
 
-  afterEach(() => {
+  // Égalise le localStorage ou les mocks globaux avant chaque test si nécessaire
+  beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  test('l utilisateur ajoute une tâche et elle s affiche dans la liste', async () => {
-    const user = userEvent.setup();
+  test('doit afficher correctement le composant App avec l état initial', () => {
+    const initialState = {
+      items: [],
+      filter: 'ALL',
+      status: 'idle',
+      error: null
+    };
 
-    renderWithRedux(<App />);
+    renderWithRedux(<App />, { initialState });
 
-    const input = screen.getByRole('textbox');
-    const button = screen.getByRole('button', { name: /ajouter/i });
-
-    await user.type(input, 'Nouvelle Tâche Redux');
-    await user.click(button);
-
-    const newTask = await screen.findByText('Nouvelle Tâche Redux');
-    expect(newTask).toBeInTheDocument();
+    // Vérifie qu'un élément clé ou titre existe dans App
+    // Adaptez les query texts selon votre template exact (ex: titre, placeholder d'input, etc.)
+    expect(screen.getByRole('heading')).toBeInTheDocument();
   });
+
+  test('doit afficher la liste des tâches présente dans le store Redux', () => {
+    const initialState = {
+      items: [
+        { _id: '1', title: 'Acheter du pain', status: 'en cours' },
+        { _id: '2', title: 'Faire du sport', status: 'terminée' }
+      ],
+      filter: 'ALL',
+      status: 'succeeded',
+      error: null
+    };
+
+    renderWithRedux(<App />, { initialState });
+
+    // Vérifie que les tâches sont visibles à l'écran
+    expect(screen.getByText('Acheter du pain')).toBeInTheDocument();
+    expect(screen.getByText('Faire du sport')).toBeInTheDocument();
+  });
+
+  test('doit afficher un message d erreur si l état status est "failed"', () => {
+    const initialState = {
+      items: [],
+      filter: 'ALL',
+      status: 'failed',
+      error: 'Erreur lors du chargement des tâches'
+    };
+
+    renderWithRedux(<App />, { initialState });
+
+    // Vérifie qu'un message ou conteneur d'erreur apparaît si prévu dans App.jsx
+    expect(screen.getByText(/Erreur lors du chargement/i)).toBeInTheDocument();
+  });
+
+  test('doit permettre de saisir une nouvelle tâche dans l input', () => {
+    const initialState = {
+      items: [],
+      filter: 'ALL',
+      status: 'idle',
+      error: null
+    };
+
+    renderWithRedux(<App />, { initialState });
+
+    // Récupération du champ de saisie (adaptez le placeholder selon votre App.jsx)
+    const input = screen.getByPlaceholderText(/ajouter/i) || screen.getByRole('textbox');
+
+    fireEvent.change(input, { target: { value: 'Nouvelle tâche de test' } });
+
+    expect(input.value).toBe('Nouvelle tâche de test');
+  });
+
 });

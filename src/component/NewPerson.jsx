@@ -1,6 +1,8 @@
 import { useState } from 'react';
 
-export function NewPerson() {
+
+export function NewPerson({onPersonAdded}) {
+  const [userId, setUserId] = useState()
   const [nom, setNom] = useState('');
   const [prenom, setPrenom] = useState('');
   const [age, setAge] = useState('')
@@ -20,12 +22,14 @@ export function NewPerson() {
   const [description, setDescription] = useState('');
   const [message, setMessage] = useState(null);
 
+  
   const handleAdresseChange = (field, value) => {
     setAdresse(prev => ({ ...prev, [field]: value }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const token = localStorage.getItem('token');
 
     // Transformation des chaînes de caractères séparées par des virgules en tableaux
     const formattedHobbies = hobbies ? hobbies.split(',').map(h => h.trim()).filter(Boolean) : [];
@@ -34,6 +38,7 @@ export function NewPerson() {
     const personData = {
       nom: nom.trim(),
       prenom: prenom.trim(),
+      age: age ? Number(age) : undefined,
       dateNaissance,
       adresse,
       email: email.trim(),
@@ -45,18 +50,26 @@ export function NewPerson() {
     try {
       const response = await fetch('http://localhost:5000/api/persons', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json','Authorization': `Bearer ${token}` },
         body: JSON.stringify(personData),
       });
 
-      if (!response.ok) throw new Error("Erreur lors de l'enregistrement");
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("Message exact du serveur :", errorData);
+        throw new Error(errorData.message || "Erreur lors de l'enregistrement");
+      }
 
       const savedPerson = await response.json();
       setMessage({ type: 'success', text: `Personne "${savedPerson.prenom} ${savedPerson.nom}" ajoutée avec succès !` });
       
+      if (onPersonAdded) {
+        onPersonAdded(savedPerson);
+      }
      
       setNom('');
       setPrenom('');
+      setAge('');
       setDateNaissance('');
       setAdresse({ num: '', rue: '', codePostal: '', ville: '', pays: '' });
       setEmail('');
@@ -64,6 +77,7 @@ export function NewPerson() {
       setPlatsFavoris('');
       setDescription('');
     } catch (err) {
+      console.error("Détail de l'erreur Personne :", err);
       setMessage({ type: 'error', text: err.message });
     }
   };
@@ -101,7 +115,7 @@ export function NewPerson() {
      
 
 
-    {/* Âge, Date de naissance et Email */}
+    {/* age, Date de naissance et Email */}
       <div className="grid grid-cols-1 sm:grid-cols-6 gap-3">
         <input
           type="number"

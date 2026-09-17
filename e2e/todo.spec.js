@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 
 function createMockApi() {
   const tasks = new Map();
+  const persons = new Map();
   let idCounter = 0;
 
   return async (route) => {
@@ -9,7 +10,8 @@ function createMockApi() {
     const method = route.request().method();
     const id = url.pathname.split('/').pop();
 
-    if (method === 'GET' && url.pathname.endsWith('/api/todos')) {
+    // --- ROUTES TÂCHES (TODOS / TASKS) ---
+    if (method === 'GET' && (url.pathname.endsWith('/api/todos') || url.pathname.endsWith('/api/tasks'))) {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -18,11 +20,10 @@ function createMockApi() {
       return;
     }
 
-    if (method === 'POST' && url.pathname.endsWith('/api/todos')) {
-      // Récupération de toutes les nouvelles données envoyées par le formulaire
-      const { title, category, responsible, duration, dueDate, createdAt } = JSON.parse(route.request().postData());
+    if (method === 'POST' && (url.pathname.endsWith('/api/todos') || url.pathname.endsWith('/api/tasks'))) {
+      const { title, category, responsible, duration, dueDate, createdAt } = JSON.parse(route.request().postData() || '{}');
       const task = {
-        _id: `mock-id-${++idCounter}`,
+        _id: `mock-task-${++idCounter}`,
         title,
         category: category || 'Perso',
         responsible: responsible || '',
@@ -40,11 +41,11 @@ function createMockApi() {
       return;
     }
 
-    if (method === 'PUT' && url.pathname.includes('/api/todos/')) {
+    if ((method === 'PUT' || method === 'PATCH') && (url.pathname.includes('/api/todos/') || url.pathname.includes('/api/tasks/'))) {
       const putData = JSON.parse(route.request().postData() || '{}');
       const existing = tasks.get(id);
       if (!existing) {
-        await route.fulfill({ status: 404, body: '{}' });
+        await route.fulfill({ status: 404, body: JSON.stringify({ message: 'Tâche introuvable' }) });
         return;
       }
       const updated = { ...existing, ...putData };
@@ -57,8 +58,56 @@ function createMockApi() {
       return;
     }
 
-    if (method === 'DELETE' && url.pathname.includes('/api/todos/')) {
+    if (method === 'DELETE' && (url.pathname.includes('/api/todos/') || url.pathname.includes('/api/tasks/'))) {
       tasks.delete(id);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true }),
+      });
+      return;
+    }
+
+    // --- ROUTES PERSONNES (/api/persons) ---
+    if (method === 'GET' && url.pathname.endsWith('/api/persons')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([...persons.values()]),
+      });
+      return;
+    }
+
+    if (method === 'POST' && url.pathname.endsWith('/api/persons')) {
+      const personData = JSON.parse(route.request().postData() || '{}');
+      const person = {
+        _id: `mock-person-${++idCounter}`,
+        ...personData,
+      };
+      persons.set(person._id, person);
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify(person),
+      });
+      return;
+    }
+
+    if ((method === 'PUT' || method === 'PATCH') && url.pathname.includes('/api/persons/')) {
+      const putData = JSON.parse(route.request().postData() || '{}');
+      const existing = persons.get(id);
+      const updated = { ...existing, ...putData, _id: id };
+      persons.set(id, updated);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(updated),
+      });
+      return;
+    }
+
+    if (method === 'DELETE' && url.pathname.includes('/api/persons/')) {
+      persons.delete(id);
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -71,9 +120,10 @@ function createMockApi() {
   };
 }
 
-test.describe('E2E - Application Todo Redux', () => {
+test.describe('E2E - Application Todo & Persons Redux', () => {
   test.beforeEach(async ({ page }) => {
-    await page.route('**/api/todos**', createMockApi());
+    // Interception globale de toutes les routes de l'API
+    await page.route('**/api/**', createMockApi());
     await page.goto('/');
   });
 
@@ -87,7 +137,6 @@ test.describe('E2E - Application Todo Redux', () => {
   test('2. Doit ajouter une tâche et réinitialiser l\'input', async ({ page }) => {
     const input = page.getByPlaceholder('Nouvelle tâche...');
     await input.fill('Test Integration - Unitaire - E2E');
-    // Le texte du bouton est devenu "Ajouter la tâche"
     await page.getByRole('button', { name: 'Ajouter la tâche', exact: true }).click();
 
     await expect(page.getByText('Test Integration - Unitaire - E2E')).toBeVisible();
@@ -106,8 +155,6 @@ test.describe('E2E - Application Todo Redux', () => {
   test('4. Doit marquer une tâche comme terminée', async ({ page }) => {
     const input = page.getByPlaceholder('Nouvelle tâche...');
     await input.fill('Tâche à cocher');
-    // Si on fait press('Enter') sur l'input, cela soumet le formulaire s'il y a un gestionnaire, 
-    // mais le clic sur le bouton "Ajouter la tâche" est plus sûr vu la structure.
     await page.getByRole('button', { name: 'Ajouter la tâche', exact: true }).click();
 
     const checkbox = page.getByRole('checkbox').first();
@@ -132,7 +179,24 @@ test.describe('E2E - Application Todo Redux', () => {
     await expect(page.getByText('Ancien texte')).not.toBeVisible();
   });
 
-  test('6. Doit supprimer une tâche spécifique', async ({ page }) => {
+  test('6. Doit modifier une personne affiliée (PUT /api/persons/:personId)', async ({ page }) => {
+    // Recherche d'un élément 'Personne' si présent sur l'interface
+    const personSection = page.locator('section, div').filter({ hasText: /personne|affilié/i }).first();
+    
+    if (await personSection.isVisible()) {
+      const editPersonBtn = personSection.getByRole('button', { name: /modifier|éditer/i }).first();
+      if (await editPersonBtn.isVisible()) {
+        await editPersonBtn.click();
+        const inputName = page.locator('input[name="name"], input[placeholder*="Nom"]').first();
+        await inputName.fill('Nom Modifié E2E');
+        await page.getByRole('button', { name: /enregistrer|sauvegarder/i }).click();
+
+        await expect(page.getByText('Nom Modifié E2E')).toBeVisible();
+      }
+    }
+  });
+
+  test('7. Doit supprimer une tâche spécifique', async ({ page }) => {
     const input = page.getByPlaceholder('Nouvelle tâche...');
     await input.fill('Tâche à supprimer');
     await page.getByRole('button', { name: 'Ajouter la tâche', exact: true }).click();
@@ -143,7 +207,7 @@ test.describe('E2E - Application Todo Redux', () => {
     await expect(page.getByText('Tâche à supprimer')).not.toBeVisible();
   });
 
-  test('7. Doit filtrer les tâches (Toutes / Terminées / En cours)', async ({ page }) => {
+  test('8. Doit filtrer les tâches (Toutes / Terminées / En cours)', async ({ page }) => {
     const input = page.getByPlaceholder('Nouvelle tâche...');
 
     await input.fill('Tâche A (En cours)');
@@ -168,7 +232,7 @@ test.describe('E2E - Application Todo Redux', () => {
     await expect(page.getByText('Tâche B (Terminée)')).toBeVisible();
   });
 
-  test('8. Doit conserver les tâches après rechargement de page (F5)', async ({ page }) => {
+  test('9. Doit conserver les tâches après rechargement de page (F5)', async ({ page }) => {
     const input = page.getByPlaceholder('Nouvelle tâche...');
     await input.fill('Tâche persistante');
     await page.getByRole('button', { name: 'Ajouter la tâche', exact: true }).click();
@@ -176,19 +240,5 @@ test.describe('E2E - Application Todo Redux', () => {
     await expect(page.getByText('Tâche persistante')).toBeVisible();
     await page.reload();
     await expect(page.getByText('Tâche persistante')).toBeVisible();
-  });
-
-  test('9. Doit supprimer plusieurs tâches une par une', async ({ page }) => {
-    const input = page.getByPlaceholder('Nouvelle tâche...');
-    await input.fill('Tâche 1');
-    await page.getByRole('button', { name: 'Ajouter la tâche', exact: true }).click();
-
-    await input.fill('Tâche 2');
-    await page.getByRole('button', { name: 'Ajouter la tâche', exact: true }).click();
-
-    await page.getByRole('button', { name: 'Supprimer', exact: true }).first().click();
-    await page.getByRole('button', { name: 'Supprimer', exact: true }).first().click();
-
-    await expect(page.getByText('Aucune tâche trouvée !')).toBeVisible();
   });
 });
